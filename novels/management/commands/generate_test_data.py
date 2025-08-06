@@ -576,11 +576,11 @@ class Command(BaseCommand):
                 try:
                     # Generate realistic content
                     content_pieces = random.sample(sample_content, min(random.randint(2, 4), len(sample_content)))
-                    content = "\\n\\n".join(content_pieces)
+                    content = "\n\n".join(content_pieces)
                     
                     # Add some variation
                     if random.random() < 0.3:
-                        content += f"\\n\\n{fake.text(max_nb_chars=300)}"
+                        content += f"\n\n{fake.text(max_nb_chars=300)}"
                     
                     chunk = Chunk.objects.create(
                         chapter=chapter,

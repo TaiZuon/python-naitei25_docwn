@@ -71,6 +71,7 @@ MAX_FINISH_NOVELS =13
 MAX_NEWUPDATE_NOVELS =12
 MAX_LATEST_CHAPTER = 14
 MIN_LATEST_CHAPTER = 1
+MAX_HOME_COMMENTS = 10  # Maximum comments to show on home page
 
 # Constants for min_length
 MIN_RATE = 0

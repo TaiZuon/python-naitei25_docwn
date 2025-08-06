@@ -377,7 +377,7 @@ class Command(BaseCommand):
             for i in range(chunk_count):
                 content = random.choice(sample_contents)
                 if random.random() < 0.5:
-                    content += f"\\n\\n{fake.text(max_nb_chars=200)}"
+                    content += f"\n\n{fake.text(max_nb_chars=200)}"
                 
                 chunk = Chunk.objects.create(
                     chapter=chapter,

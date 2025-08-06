@@ -1,6 +1,7 @@
 import json
 import random
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
+from django.utils import timezone
 
 from django.contrib import messages
 from django.db.models import Prefetch
@@ -10,7 +11,7 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods
 from django.utils.translation import gettext_lazy as _
 from common.decorators import require_active_novel
-from .fake_data import card_list, discussion_data, comments, getNewNovels,top_novels_this_month, new_novels,authors,novels, users,comments,novel_uploads,chapter_uploads,volume_uploads
+from .fake_data import card_list, discussion_data, getNewNovels,top_novels_this_month, new_novels,authors,novels, users,novel_uploads,chapter_uploads,volume_uploads
 from django.shortcuts import render
 from datetime import date, timedelta
 import random
@@ -49,6 +50,7 @@ from constants import (
     MAX_NEWUPDATE_NOVELS,
     MAX_LATEST_CHAPTER,
     MIN_LATEST_CHAPTER,
+    MAX_HOME_COMMENTS,
     ApprovalStatus,
     ProgressStatus,
     WORDS_PER_MINUTE
@@ -56,8 +58,28 @@ from constants import (
 from .models import (
     Novel, Tag, NovelTag, Author, Artist, Volume, Chapter, ReadingHistory
 )
+from interactions.models import Comment
 from .forms import NovelForm, ChapterForm
 from django.shortcuts import render
+
+def get_relative_time(created_at):
+    """Get relative time string in Vietnamese"""
+    if not created_at:
+        return ''
+    
+    now = timezone.now()
+    diff = now - created_at
+    
+    if diff.days > 0:
+        return f"{diff.days} ngày"
+    elif diff.seconds >= 3600:
+        hours = diff.seconds // 3600
+        return f"{hours} giờ"
+    elif diff.seconds >= 60:
+        minutes = diff.seconds // 60
+        return f"{minutes} phút"
+    else:
+        return "Vừa xong"
 
 def Home(request):
     approved_novels = Novel.objects.filter(approval_status=ApprovalStatus.APPROVED.value, deleted_at__isnull=True)
@@ -89,12 +111,37 @@ def Home(request):
             recent_chapter = Chapter.objects.filter(volume=recent_volume).order_by('-updated_at').first()
             novel.recent_chapter = recent_chapter
     newupdate_novels = get_recent_volumes_for_cards(limit=MAX_NEWUPDATE_NOVELS)
+    
+    # Get recent comments from database
+    comments = Comment.objects.select_related('user', 'novel', 'user__profile').filter(
+        novel__approval_status=ApprovalStatus.APPROVED.value,
+        novel__deleted_at__isnull=True,
+        is_reported=False  # Exclude reported comments
+    ).exclude(
+        user__isnull=True  # Exclude comments from deleted users
+    ).order_by('-created_at')[:MAX_HOME_COMMENTS]
+    
+    # Format comments data for template compatibility
+    comments_data = []
+    for comment in comments:
+        avatar_url = None
+        if comment.user and hasattr(comment.user, 'profile') and comment.user.profile:
+            avatar_url = comment.user.profile.get_avatar()
+        
+        comments_data.append({
+            'title': comment.novel.name if comment.novel else 'Unknown Novel',
+            'comment': comment.content[:200] + '...' if len(comment.content) > 200 else comment.content,  # Truncate long comments
+            'username': comment.user.username if comment.user else 'Anonymous',
+            'avatar': avatar_url,
+            'time': get_relative_time(comment.created_at)
+        })
+    
     context = {
         "finish_novels": finish_novels,
         "trend_novels": trend_novels,
         "new_novels":new_novels,
         "discussion_data": discussion_data,
-        "comments": comments,
+        "comments": comments_data,
         "newupdate_novels" : newupdate_novels,
         "card_list" : card_list,
         "like_novels" : like_novels,

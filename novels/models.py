@@ -210,6 +210,31 @@ class Chapter(models.Model):
     def __str__(self):
         return f"{self.volume.novel.name} - {self.title}"
     
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            # Generate slug from title
+            if self.title and self.title.strip():
+                base_slug = slugify(self.title.strip())
+            else:
+                base_slug = f'chuong-{self.position}'
+                
+            if not base_slug:  # If slugify returns empty string (e.g., non-Latin characters)
+                base_slug = f'chuong-{self.position}'
+            
+            # Ensure uniqueness within the same novel
+            slug = base_slug
+            counter = 1
+            while Chapter.objects.filter(
+                volume__novel=self.volume.novel, 
+                slug=slug
+            ).exclude(pk=self.pk).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            
+            self.slug = slug
+            
+        super().save(*args, **kwargs)
+    
     @property
     def novel(self):
         return self.volume.novel

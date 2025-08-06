@@ -4,16 +4,22 @@
     <meta charset="UTF-8">
     {% load i18n %}
     <title>{% block title %}{% trans "Tài khoản" %}{% endblock %}</title>
+    {% load static %}
+    <link href="{% static 'novels/css/bootstrap.min.css' %}" rel="stylesheet" />
     {% block extra_css %}{% endblock %}
 </head>
 <body>
     {% if messages %}
-        <ul>
+        <div class="container mt-3">
             {% for message in messages %}
-                <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+                <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
             {% endfor %}
-        </ul>
+        </div>
     {% endif %}
     {% block content %}{% endblock %}
+    <script src="{% static 'novels/js/bootstrap.bundle.min.js' %}"></script>
 </body>
 </html>

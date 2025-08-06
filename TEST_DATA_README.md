@@ -71,6 +71,20 @@ python manage.py clear_test_data --confirm
 
 Safely removes all test data from the database.
 
+### 6. `fix_chunk_content` - Content Formatting Fix
+```bash
+python manage.py fix_chunk_content
+```
+
+Fixes chunk content formatting by converting literal `\n` characters to actual newlines for proper display in templates.
+
+### 7. `fix_chapter_slugs` - Slug Generation Fix
+```bash
+python manage.py fix_chapter_slugs
+```
+
+Generates slugs for chapters that have empty slug fields, fixing URL routing issues.
+
 ## Current Database Statistics
 
 After running the comprehensive data generation:

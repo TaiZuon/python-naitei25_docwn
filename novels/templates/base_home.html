@@ -25,6 +25,19 @@
   <body class="bg-body text-body">
     {% include 'novels/includes/navbar.html' %}
     {% include 'novels/includes/user_sidebar.html' %}
+    
+    <!-- Messages Display -->
+    {% if messages %}
+        <div class="container mt-5 pt-4">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+    
     <main class="container mt-5 pt-4">{% block content %} {% endblock %}</main>
     {% include 'novels/includes/footer.html' %}
     <script src="{% static 'novels/js/theme-toggle.js' %}"></script>
