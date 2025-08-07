@@ -24,7 +24,7 @@ from django.contrib.auth.mixins import (
 )
 from django.http import JsonResponse, Http404
 from django.shortcuts import render, get_object_or_404, redirect
-from django.urls import reverse_lazy
+from django.urls import reverse_lazy, reverse
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_http_methods
 from django.views.generic.edit import CreateView
@@ -66,6 +66,10 @@ def get_relative_time(created_at):
     """Get relative time string in Vietnamese"""
     if not created_at:
         return ''
+    
+    # Ensure we're working with timezone-aware datetime
+    if timezone.is_naive(created_at):
+        created_at = timezone.make_aware(created_at)
     
     now = timezone.now()
     diff = now - created_at
@@ -357,27 +361,36 @@ def load_more_chunks(request, chapter_id):
     })
 
 def get_recent_volumes_for_cards(limit=MAX_LATEST_CHAPTER):
-    latest_chapter = Chapter.objects.filter(
-        volume_id=OuterRef('pk')
-    ).order_by('-updated_at').values('title')[:MIN_LATEST_CHAPTER]
+    """Get recent volumes with their latest chapters for homepage cards"""
+    
+    # Get the most recent chapter for each volume
+    latest_chapter_subquery = Chapter.objects.filter(
+        volume_id=OuterRef('pk'),
+        approved=True,
+        is_hidden=False,
+        deleted_at__isnull=True
+    ).order_by('-updated_at').values('title', 'updated_at')[:1]
 
-    volumes = Volume.objects.select_related('novel').annotate(
-        novel_name=Subquery(
-            Novel.objects.filter(pk=OuterRef('novel_id'), approval_status=ApprovalStatus.APPROVED.value).values('name')[:MIN_LATEST_CHAPTER]
-        ),
-        novel_slug=Subquery(
-            Novel.objects.filter(pk=OuterRef('novel_id'), approval_status=ApprovalStatus.APPROVED.value).values('slug')[:MIN_LATEST_CHAPTER ]
-        ),
-        image_url=Subquery(
-            Novel.objects.filter(pk=OuterRef('novel_id'), approval_status=ApprovalStatus.APPROVED.value).values('image_url')[:MIN_LATEST_CHAPTER ]
-        ),
-        recent_chapter_title=Subquery(latest_chapter)
-    ).order_by('-updated_at')[:limit]
-
+    # Get volumes with approved novels, ordered by their latest chapter update
+    volumes = Volume.objects.select_related('novel').filter(
+        novel__approval_status=ApprovalStatus.APPROVED.value,
+        novel__deleted_at__isnull=True,
+        # Only include volumes that have at least one approved chapter
+        chapters__approved=True,
+        chapters__is_hidden=False,
+        chapters__deleted_at__isnull=True
+    ).annotate(
+        recent_chapter_title=Subquery(latest_chapter_subquery.values('title')),
+        latest_chapter_update=Subquery(latest_chapter_subquery.values('updated_at'))
+    ).filter(
+        # Only include volumes that have chapters
+        recent_chapter_title__isnull=False
+    ).distinct().order_by('-latest_chapter_update')[:limit]
+    
     return [{
-        'name': vol.novel_name,  
-        'slug': vol.novel_slug,  
-        'image_url': vol.image_url,
+        'name': vol.novel.name,  
+        'slug': vol.novel.slug,  
+        'image_url': vol.novel.image_url,
         'recent_volume': {
             'name': vol.name
         },
@@ -636,3 +649,62 @@ def chapter_delete_view(request, novel_slug, chapter_slug):
 def chapter_upload_rules(request):
     """Static page showing chapter upload rules"""
     return render(request, 'chapters/chapter_upload_rules.html')
+
+
+def novel_upload_rules(request):
+    """Static page showing novel upload rules and guidelines"""
+    return render(request, 'novels/novel_upload_rule.html')
+
+
+def search_novels(request):
+    """Simple search function for novels"""
+    query = request.GET.get('q', '').strip()
+    novels = []
+    
+    if query:
+        # Search in novel name, summary, author name, other names, and tags
+        novels = Novel.objects.filter(
+            models.Q(name__icontains=query) |
+            models.Q(summary__icontains=query) |
+            models.Q(author__name__icontains=query) |
+            models.Q(artist__name__icontains=query) |
+            models.Q(other_names__icontains=query) |
+            models.Q(tags__name__icontains=query),
+            approval_status=ApprovalStatus.APPROVED.value,
+            deleted_at__isnull=True
+        ).select_related('author', 'artist').prefetch_related('tags').distinct().order_by('-view_count')[:20]
+    
+    context = {
+        'novels': novels,
+        'query': query,
+        'total_results': len(novels) if novels else 0
+    }
+    
+    return render(request, 'novels/search_results.html', context)
+
+
+def search_novels_api(request):
+    """API endpoint for live search autocomplete"""
+    query = request.GET.get('q', '').strip()
+    results = []
+    
+    if query and len(query) >= 2:  # Only search if query is at least 2 characters
+        novels = Novel.objects.filter(
+            models.Q(name__icontains=query) |
+            models.Q(author__name__icontains=query),
+            approval_status=ApprovalStatus.APPROVED.value,
+            deleted_at__isnull=True
+        ).select_related('author').values(
+            'name', 'slug', 'author__name', 'image_url'
+        )[:10]
+        
+        for novel in novels:
+            results.append({
+                'name': novel['name'],
+                'slug': novel['slug'],
+                'author': novel['author__name'] or 'Không rõ',
+                'image_url': novel['image_url'] or '',
+                'url': reverse('novels:novel_detail', kwargs={'novel_slug': novel['slug']})
+            })
+    
+    return JsonResponse({'results': results})

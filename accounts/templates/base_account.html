@@ -6,9 +6,11 @@
     <title>{% block title %}{% trans "Tài khoản" %}{% endblock %}</title>
     {% load static %}
     <link href="{% static 'novels/css/bootstrap.min.css' %}" rel="stylesheet" />
+    <link rel="stylesheet" href="{% static 'accounts/css/styles.css' %}" />
+    <link href="https://cdn.boxicons.com/fonts/basic/boxicons.min.css" rel="stylesheet" />
     {% block extra_css %}{% endblock %}
 </head>
-<body>
+<body class="bg-body text-body">
     {% if messages %}
         <div class="container mt-3">
             {% for message in messages %}
@@ -20,6 +22,8 @@
         </div>
     {% endif %}
     {% block content %}{% endblock %}
+    
+    <script src="{% static 'novels/js/jquery.min.js' %}"></script>
     <script src="{% static 'novels/js/bootstrap.bundle.min.js' %}"></script>
 </body>
 </html>

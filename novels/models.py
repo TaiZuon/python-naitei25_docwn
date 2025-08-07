@@ -9,6 +9,7 @@ from constants import (
     MAX_COUNTRY_LENGTH,
     MAX_TAG_LENGTH,
     MAX_TITLE_LENGTH,
+    MAX_SLUG_LENGTH,
     MAX_GENDER_LENGTH,
     MAX_STATUS_LENGTH,
     Gender,
@@ -174,10 +175,14 @@ class Volume(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('novel', 'position')
+        unique_together = [
+            ('novel', 'position'),
+            ('novel', 'name')  # Prevent duplicate volume names within the same novel
+        ]
         ordering = ['position']
         indexes = [
             models.Index(fields=['novel', 'position']),
+            models.Index(fields=['novel', 'name']),  # Index for name lookups
         ]
         
     def __str__(self):
@@ -187,7 +192,7 @@ class Volume(models.Model):
 class Chapter(models.Model):
     volume = models.ForeignKey(Volume, on_delete=models.RESTRICT, related_name='chapters')
     title = models.CharField(max_length=MAX_TITLE_LENGTH)
-    slug = models.SlugField(max_length=MAX_TITLE_LENGTH)
+    slug = models.SlugField(max_length=MAX_SLUG_LENGTH)  # Uses constant for chapter slugs
     position = models.IntegerField()
     word_count = models.IntegerField(default=COUNT_DEFAULT)
     view_count = models.IntegerField(default=COUNT_DEFAULT)
@@ -212,22 +217,24 @@ class Chapter(models.Model):
     
     def save(self, *args, **kwargs):
         if not self.slug:
-            # Generate slug from title
-            if self.title and self.title.strip():
-                base_slug = slugify(self.title.strip())
-            else:
-                base_slug = f'chuong-{self.position}'
-                
-            if not base_slug:  # If slugify returns empty string (e.g., non-Latin characters)
-                base_slug = f'chuong-{self.position}'
+            # Generate slug from volume name and chapter title
+            volume_slug = slugify(self.volume.name) if self.volume.name else f'tap-{self.volume.position}'
             
-            # Ensure uniqueness within the same novel
+            if self.title and self.title.strip():
+                chapter_slug = slugify(self.title.strip())
+            else:
+                chapter_slug = f'chuong-{self.position}'
+                
+            # Combine volume and chapter information
+            if chapter_slug:
+                base_slug = f'{volume_slug}-{chapter_slug}'
+            else:
+                base_slug = f'{volume_slug}-chuong-{self.position}'
+            
+            # Ensure global uniqueness for admin URLs
             slug = base_slug
             counter = 1
-            while Chapter.objects.filter(
-                volume__novel=self.volume.novel, 
-                slug=slug
-            ).exclude(pk=self.pk).exists():
+            while Chapter.objects.filter(slug=slug).exclude(pk=self.pk).exists():
                 slug = f"{base_slug}-{counter}"
                 counter += 1
             

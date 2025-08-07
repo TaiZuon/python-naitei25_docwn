@@ -23,8 +23,17 @@ from constants import (
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load environment variables from .env file
-load_dotenv(os.path.join(BASE_DIR, ".env"))
+# Environment detection
+IS_HEROKU = 'DYNO' in os.environ or 'HEROKU_APP_NAME' in os.environ
+IS_PRODUCTION = IS_HEROKU or os.getenv('DJANGO_ENV') == 'production'
+
+# Load environment variables from .env file only in development
+if not IS_HEROKU:
+    load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+# Environment info for debugging
+print(f"🌍 Environment: {'Heroku' if IS_HEROKU else 'Local Development'}")
+print(f"🔧 Production mode: {IS_PRODUCTION}")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -33,9 +42,16 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 SECRET_KEY = os.getenv("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DEBUG", "False").lower() == "true"
+if IS_HEROKU:
+    DEBUG = os.getenv("DEBUG", "False").lower() == "true"
+else:
+    DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+# Allowed hosts configuration
+if IS_HEROKU:
+    ALLOWED_HOSTS = ['*']  # Heroku provides proper host headers
+else:
+    ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0").split(",")
 
 
 # Application definition
@@ -91,25 +107,57 @@ WSGI_APPLICATION = "docwn.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-# Default database configuration for development
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.mysql",
-        "NAME": os.getenv("DB_NAME", ""),
-        "USER": os.getenv("DB_USER", ""),
-        "PASSWORD": os.getenv("DB_PASSWORD", ""),
-        "HOST": os.getenv("DB_HOST", "localhost"),
-        "PORT": os.getenv("DB_PORT", "3306"),
-        "OPTIONS": {
-            "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
-        },
-    }
-}
-
-# Override with Heroku database if DATABASE_URL is provided
-database_url = os.getenv('DATABASE_URL')
-if database_url:
-    DATABASES['default'] = dj_database_url.parse(database_url)
+# Database configuration based on environment
+if IS_HEROKU:
+    # Heroku configuration - use DATABASE_URL
+    database_url = os.getenv('DATABASE_URL')
+    if database_url:
+        DATABASES = {
+            'default': dj_database_url.parse(database_url)
+        }
+    else:
+        # Fallback for Heroku without DATABASE_URL
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': os.getenv('DB_NAME', 'docwn_production'),
+                'USER': os.getenv('DB_USER', ''),
+                'PASSWORD': os.getenv('DB_PASSWORD', ''),
+                'HOST': os.getenv('DB_HOST', 'localhost'),
+                'PORT': os.getenv('DB_PORT', '5432'),
+            }
+        }
+else:
+    # Local development configuration
+    database_url = os.getenv('DATABASE_URL')
+    if database_url:
+        # Use DATABASE_URL if provided (for testing Heroku config locally)
+        DATABASES = {
+            'default': dj_database_url.parse(database_url)
+        }
+    elif os.getenv('DB_NAME'):
+        # Use MySQL if DB_NAME is provided
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.mysql",
+                "NAME": os.getenv("DB_NAME"),
+                "USER": os.getenv("DB_USER", ""),
+                "PASSWORD": os.getenv("DB_PASSWORD", ""),
+                "HOST": os.getenv("DB_HOST", "localhost"),
+                "PORT": os.getenv("DB_PORT", "3306"),
+                "OPTIONS": {
+                    "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
+                },
+            }
+        }
+    else:
+        # Default to SQLite for easy development
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
+        }
 
 
 # Password validation
@@ -143,7 +191,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "Asia/Ho_Chi_Minh"
 
 USE_I18N = True
 
@@ -154,15 +202,25 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = "static/"
-
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'novels', 'static'),
 ]
 
-# WhiteNoise configuration for serving static files on Heroku
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# Static files configuration based on environment
+if IS_HEROKU:
+    # WhiteNoise configuration for serving static files on Heroku
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+    
+    # Add WhiteNoise to middleware if not already present
+    if 'whitenoise.middleware.WhiteNoiseMiddleware' not in MIDDLEWARE:
+        # Insert after SecurityMiddleware
+        security_index = MIDDLEWARE.index('django.middleware.security.SecurityMiddleware')
+        MIDDLEWARE.insert(security_index + 1, 'whitenoise.middleware.WhiteNoiseMiddleware')
+else:
+    # Development static files (default Django behavior)
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -239,9 +297,11 @@ SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
 IMGBB_API_KEY = os.getenv('IMGBB_API_KEY')
 
-# Production security settings
-if not DEBUG:
-    # HTTPS settings
+# Environment-specific security settings
+if IS_HEROKU or IS_PRODUCTION:
+    print("🔐 Applying production security settings...")
+    
+    # HTTPS settings for production
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SECURE_SSL_REDIRECT = True
     SECURE_BROWSER_XSS_FILTER = True
@@ -251,8 +311,30 @@ if not DEBUG:
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     
-    # Cookie security
+    # Cookie security for production
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SESSION_COOKIE_HTTPONLY = True
     CSRF_COOKIE_HTTPONLY = True
+    
+    # Additional production settings
+    SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+    SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
+    
+else:
+    print("🛠️  Applying development security settings...")
+    
+    # Development settings - disable HTTPS requirements
+    SECURE_SSL_REDIRECT = False
+    SECURE_PROXY_SSL_HEADER = None
+    
+    # Development cookies (less secure but easier for development)
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+    SESSION_COOKIE_HTTPONLY = True  # Keep this for security
+    CSRF_COOKIE_HTTPONLY = True     # Keep this for security
+    
+    # Disable HSTS for development
+    SECURE_HSTS_SECONDS = 0
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False

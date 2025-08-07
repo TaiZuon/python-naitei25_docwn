@@ -66,6 +66,9 @@ class Command(BaseCommand):
             
         self.stdout.write('Starting data generation...')
         
+        # First, clean up any bad data
+        self.cleanup_bad_data()
+        
         try:
             # Core data
             users = self.create_users(options['users'])
@@ -105,6 +108,35 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.ERROR(f'Error during data generation: {e}')
             )
+
+    def cleanup_bad_data(self):
+        """Clean up any existing bad data"""
+        from novels.models import Novel, Volume, Chapter
+        
+        # Fix novels without slugs
+        novels_without_slugs = Novel.objects.filter(slug__isnull=True) | Novel.objects.filter(slug='')
+        for novel in novels_without_slugs:
+            novel.slug = f'novel-{novel.id}'
+            novel.save(update_fields=['slug'])
+            self.stdout.write(f'Fixed novel slug: {novel.name}')
+        
+        # Fix volumes with invalid novel relationships
+        invalid_volumes = Volume.objects.filter(novel__isnull=True)
+        for volume in invalid_volumes:
+            self.stdout.write(f'Removing invalid volume: {volume.id}')
+            volume.delete()
+        
+        # Fix chapters with invalid volume relationships
+        invalid_chapters = Chapter.objects.filter(volume__isnull=True)
+        for chapter in invalid_chapters:
+            self.stdout.write(f'Removing invalid chapter: {chapter.id}')
+            chapter.delete()
+        
+        # Fix chapters without slugs
+        chapters_without_slugs = Chapter.objects.filter(slug__isnull=True) | Chapter.objects.filter(slug='')
+        for chapter in chapters_without_slugs:
+            chapter.save()  # This will trigger slug generation
+            self.stdout.write(f'Fixed chapter slug: {chapter.title}')
 
     def clear_data(self):
         """Clear all existing data"""
@@ -462,6 +494,11 @@ class Command(BaseCommand):
                     rejected_reason=fake.text(max_nb_chars=200) if random.random() < 0.1 else None
                 )
                 
+                # Verify slug was created properly
+                if not novel.slug:
+                    novel.slug = f'novel-{i+1}'
+                    novel.save(update_fields=['slug'])
+                
                 # Assign random tags (2-5 tags per novel)
                 novel_tags = random.sample(tags, min(random.randint(2, 5), len(tags)))
                 for tag in novel_tags:
@@ -484,6 +521,11 @@ class Command(BaseCommand):
         volumes = []
         
         for novel in novels:
+            # Ensure novel has a valid slug
+            if not novel.slug:
+                novel.slug = f'novel-{novel.id}'
+                novel.save(update_fields=['slug'])
+                
             # Each novel has 1-5 volumes
             volume_count = random.randint(1, 5)
             
@@ -519,6 +561,11 @@ class Command(BaseCommand):
         ]
         
         for volume in volumes:
+            # Ensure volume has a proper novel relationship
+            if not volume.novel or not volume.novel.slug:
+                self.stdout.write(f'Warning: Volume {volume.id} has invalid novel relationship')
+                continue
+                
             # Each volume has 5-20 chapters
             chapter_count = random.randint(5, 20)
             
@@ -538,6 +585,12 @@ class Command(BaseCommand):
                         rejected_reason=fake.text(max_nb_chars=100) if random.random() < 0.05 else None,
                         is_hidden=random.choice([True, False]) if random.random() < 0.1 else False
                     )
+                    
+                    # Verify chapter has proper slug
+                    if not chapter.slug:
+                        chapter.slug = f'chuong-{i+1}-{chapter.id}'
+                        chapter.save(update_fields=['slug'])
+                        
                     chapters.append(chapter)
                 except Exception as e:
                     self.stdout.write(f'Error creating chapter for volume {volume.name}: {e}')
@@ -569,6 +622,11 @@ class Command(BaseCommand):
         ]
         
         for chapter in chapters:
+            # Ensure chapter has valid relationships
+            if not chapter.volume or not chapter.volume.novel:
+                self.stdout.write(f'Warning: Chapter {chapter.id} has invalid relationships')
+                continue
+                
             # Each chapter has 3-10 chunks
             chunk_count = random.randint(3, 10)
             

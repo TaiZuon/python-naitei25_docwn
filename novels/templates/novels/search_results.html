@@ -1,0 +1,153 @@
+{% extends "base_home.html" %}
+{% load i18n %}
+{% load static %}
+
+{% block head %}
+<link rel="stylesheet" href="{% static 'novels/css/novel.detail.css' %}">
+<link rel="stylesheet" href="{% static 'novels/css/search_results.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="search-page">
+    <div class="container">
+        <!-- Search Header -->
+        <div class="search-header">
+            <div class="row">
+                <div class="col-12">
+                    <div class="search-info">
+                        {% if query %}
+                            <h2>{% blocktrans %}Kết quả tìm kiếm cho: "{{ query }}"{% endblocktrans %}</h2>
+                            <p class="text-muted">{% blocktrans count total=total_results %}Tìm thấy {{ total }} kết quả{% plural %}Tìm thấy {{ total }} kết quả{% endblocktrans %}</p>
+                        {% else %}
+                            <h2>{% trans "Tìm kiếm truyện" %}</h2>
+                            <p class="text-muted">{% trans "Nhập từ khóa để tìm kiếm truyện" %}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search Form -->
+        <div class="search-form-section mb-4">
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <form method="GET" action="{% url 'novels:search_novels' %}" class="search-form">
+                        <div class="input-group">
+                            <input 
+                                type="text" 
+                                name="q" 
+                                class="form-control search-input" 
+                                placeholder="{% trans 'Nhập tên truyện, tác giả, hoặc mô tả...' %}"
+                                value="{{ query }}"
+                                autofocus
+                            >
+                            <button class="btn btn-primary search-btn" type="submit">
+                                <i class="bx bx-search"></i>
+                                {% trans "Tìm kiếm" %}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search Results -->
+        {% if query %}
+            {% if novels %}
+                <div class="search-results">
+                    <div class="row">
+                        {% for novel in novels %}
+                            <div class="col-lg-6 col-xl-4 mb-4">
+                                <div class="novel-card">
+                                    <div class="novel-image">
+                                        <a href="{% url 'novels:novel_detail' novel_slug=novel.slug %}">
+                                            {% if novel.image_url %}
+                                                <img src="{{ novel.image_url }}" alt="{{ novel.name }}" class="img-fluid">
+                                            {% else %}
+                                                <div class="no-image">
+                                                    <i class="bx bx-book"></i>
+                                                </div>
+                                            {% endif %}
+                                        </a>
+                                    </div>
+                                    <div class="novel-info">
+                                        <h5 class="novel-title">
+                                            <a href="{% url 'novels:novel_detail' novel_slug=novel.slug %}">{{ novel.name }}</a>
+                                        </h5>
+                                        <div class="novel-meta">
+                                            {% if novel.author %}
+                                                <div class="author">
+                                                    <i class="bx bx-user"></i>
+                                                    <span>{{ novel.author.name }}</span>
+                                                </div>
+                                            {% endif %}
+                                            <div class="stats">
+                                                <span class="views">
+                                                    <i class="bx bx-show"></i>
+                                                    {{ novel.view_count }}
+                                                </span>
+                                                <span class="rating">
+                                                    <i class="bx bx-star"></i>
+                                                    {{ novel.rating_avg|default:"0" }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="novel-tags">
+                                            {% for tag in novel.tags.all|slice:":3" %}
+                                                <span class="tag">{{ tag.name }}</span>
+                                            {% empty %}
+                                                <span class="no-tags">{% trans "Chưa có thẻ" %}</span>
+                                            {% endfor %}
+                                        </div>
+                                        <div class="novel-summary">
+                                            <p>{{ novel.summary|truncatewords:20 }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% else %}
+                <div class="no-results">
+                    <div class="row justify-content-center">
+                        <div class="col-md-6 text-center">
+                            <div class="no-results-icon">
+                                <i class="bx bx-search-alt-2"></i>
+                            </div>
+                            <h4>{% trans "Không tìm thấy kết quả" %}</h4>
+                            <p class="text-muted">
+                                {% blocktrans %}Không tìm thấy truyện nào với từ khóa "{{ query }}". Hãy thử tìm kiếm với từ khóa khác.{% endblocktrans %}
+                            </p>
+                            <div class="search-suggestions">
+                                <h6>{% trans "Gợi ý:" %}</h6>
+                                <ul class="list-unstyled">
+                                    <li>{% trans "Kiểm tra chính tả từ khóa" %}</li>
+                                    <li>{% trans "Thử sử dụng từ khóa ngắn gọn hơn" %}</li>
+                                    <li>{% trans "Tìm kiếm theo tên tác giả" %}</li>
+                                    <li>{% trans "Sử dụng từ đồng nghĩa" %}</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+        {% endif %}
+
+        <!-- Popular Novels Section (when no search query) -->
+        {% if not query %}
+            <div class="popular-novels">
+                <h3>{% trans "Truyện được quan tâm" %}</h3>
+                <div class="row">
+                    <!-- This could load some popular novels -->
+                    <div class="col-12">
+                        <p class="text-muted text-center">
+                            {% trans "Nhập từ khóa vào ô tìm kiếm để bắt đầu tìm truyện" %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
